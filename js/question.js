@@ -3,7 +3,9 @@ import { supabase } from './supabaseClient.js';
 async function loadQuestion() {
   const teamId = localStorage.getItem("teamId");
   if (!teamId) {
-    window.location.href = "index.html";
+    // Save redirect link if not logged in
+    const currentUrl = window.location.href;
+    window.location.href = `index.html?redirect=${encodeURIComponent(currentUrl)}`;
     return;
   }
 
@@ -14,21 +16,26 @@ async function loadQuestion() {
     const now = new Date();
     const diff = (now - last) / 1000;
     if (diff < 300) {
-      const remaining = 300 - Math.floor(diff);
-      document.getElementById("status").textContent = "Cooldown active, wait " + remaining + "s";
-      disableOptions();
+      document.getElementById("status").textContent = "Cooldown active, wait " + (300 - Math.floor(diff)) + "s";
       return;
     }
   }
 
-  const { data } = await supabase.from("questions").select("*").limit(1).single();
+  // Get question id from URL (for QR links)
+  const params = new URLSearchParams(window.location.search);
+  const qid = params.get("id");
+
+  let query = supabase.from("questions").select("*").limit(1);
+  if (qid) query = supabase.from("questions").select("*").eq("id", qid).single();
+
+  const { data } = await query;
   if (data) {
-    // Collect all non-null options
-    const options = [
-      data.option_a, data.option_b, data.option_c, data.option_d,
-      data.option_e, data.option_f, data.option_g, data.option_h,
-      data.option_i, data.option_j, data.option_k, data.option_l
-    ].filter(opt => opt !== null && opt !== "");
+    // Collect all available options
+    const options = [];
+    for (let i = 1; i <= 12; i++) {
+      const opt = data[`option_${i}`];
+      if (opt) options.push(opt);
+    }
 
     // Shuffle
     options.sort(() => Math.random() - 0.5);
@@ -39,37 +46,15 @@ async function loadQuestion() {
 
     document.querySelectorAll(".option").forEach(btn => {
       btn.addEventListener("click", async () => {
-        // Check cooldown again before processing
-        const { data: freshTeam } = await supabase.from("teams").select("*").eq("id", teamId).single();
-        if (freshTeam.last_attempt) {
-          const last = new Date(freshTeam.last_attempt);
-          const now = new Date();
-          const diff = (now - last) / 1000;
-          if (diff < 300) {
-            const remaining = 300 - Math.floor(diff);
-            document.getElementById("status").textContent = "Cooldown active, wait " + remaining + "s";
-            disableOptions();
-            return;
-          }
-        }
-
         if (btn.textContent === data.correct_option) {
           window.location.href = "upload.html";
         } else {
           await supabase.from("teams").update({ last_attempt: new Date().toISOString() }).eq("id", teamId);
           document.getElementById("status").textContent = "Wrong answer. 5 min cooldown.";
-          disableOptions();
+          document.querySelectorAll(".option").forEach(b => b.disabled = true); // disable all buttons
         }
       });
     });
   }
 }
-
-function disableOptions() {
-  document.querySelectorAll(".option").forEach(btn => {
-    btn.disabled = true;
-    btn.classList.add("opacity-50", "cursor-not-allowed");
-  });
-}
-
 loadQuestion();

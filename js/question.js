@@ -16,14 +16,21 @@ async function loadQuestion() {
     if (diff < 300) {
       const remaining = 300 - Math.floor(diff);
       document.getElementById("status").textContent = "Cooldown active, wait " + remaining + "s";
-      disableOptions(); // 🔒 make sure no answer can be clicked
+      disableOptions();
       return;
     }
   }
 
   const { data } = await supabase.from("questions").select("*").limit(1).single();
   if (data) {
-    const options = [data.option_a, data.option_b, data.option_c, data.option_d];
+    // Collect all non-null options
+    const options = [
+      data.option_a, data.option_b, data.option_c, data.option_d,
+      data.option_e, data.option_f, data.option_g, data.option_h,
+      data.option_i, data.option_j, data.option_k, data.option_l
+    ].filter(opt => opt !== null && opt !== "");
+
+    // Shuffle
     options.sort(() => Math.random() - 0.5);
 
     const box = document.getElementById("questionBox");
@@ -32,7 +39,7 @@ async function loadQuestion() {
 
     document.querySelectorAll(".option").forEach(btn => {
       btn.addEventListener("click", async () => {
-        // Double-check cooldown before processing
+        // Check cooldown again before processing
         const { data: freshTeam } = await supabase.from("teams").select("*").eq("id", teamId).single();
         if (freshTeam.last_attempt) {
           const last = new Date(freshTeam.last_attempt);
@@ -51,7 +58,7 @@ async function loadQuestion() {
         } else {
           await supabase.from("teams").update({ last_attempt: new Date().toISOString() }).eq("id", teamId);
           document.getElementById("status").textContent = "Wrong answer. 5 min cooldown.";
-          disableOptions(); // 🔒 lock buttons immediately
+          disableOptions();
         }
       });
     });

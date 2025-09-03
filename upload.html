@@ -1,14 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Rally Paper - Upload</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script type="module" src="js/upload.js" defer></script>
+  <title>Upload Video</title>
 </head>
 <body>
-  <h1>Upload Your Video</h1>
-  <input type="file" id="videoFile" accept="video/*">
-  <button id="uploadBtn">Upload</button>
-  <p id="uploadStatus"></p>
+  <h2>Upload Your Video</h2>
+  <form id="uploadForm">
+    <input type="file" name="file" accept="video/*,image/*" required>
+    <button type="submit">Upload</button>
+  </form>
+  <p id="status"></p>
+
+  <script>
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const file = e.target.file.files[0];
+      const formData = new FormData();
+      formData.append("file", file);
+
+      document.getElementById("status").textContent = "Uploading...";
+
+      try {
+        const res = await fetch("https://YOUR-RENDER-APP.onrender.com/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        document.getElementById("status").textContent =
+          "Uploaded! Link: " + data.fileLink;
+      } catch (err) {
+        document.getElementById("status").textContent = "Upload failed.";
+      }
+    });
+  </script>
 </body>
 </html>

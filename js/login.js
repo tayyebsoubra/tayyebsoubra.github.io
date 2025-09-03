@@ -29,7 +29,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     if (redirect) {
       window.location.href = redirect;
     } else {
-      window.location.href = "question.html";
+      window.location.href = "question.html?id=1";
     }
   }
 });

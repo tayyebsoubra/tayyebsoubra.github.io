@@ -9,7 +9,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   const { data, error } = await supabase
     .from("teams")
     .select("*")
-    .eq("name", teamName)
+    .eq("team_name", teamName)
     .eq("password", password)
     .single();
 

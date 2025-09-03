@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient.js';
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const teamName = document.getElementById("teamName").value;
+  const teamName = document.getElementById("team_name").value;
   const password = document.getElementById("password").value;
 
   const { data, error } = await supabase

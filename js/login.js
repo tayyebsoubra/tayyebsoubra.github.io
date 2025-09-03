@@ -6,30 +6,40 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   const teamName = document.getElementById("teamName").value;
   const password = document.getElementById("password").value;
 
-  console.log("Attempting login with:", teamName, password); // debug
+  console.log("Login attempt:", { teamName, password });
 
-  const { data, error } = await supabase
-    .from("teams")
-    .select("*")
-    .eq("team_name", teamName)   // ✅ match DB column
-    .eq("password", password)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from("teams")
+      .select("*")
+      .eq("team_name", teamName)
+      .eq("password", password)
+      .maybeSingle();   // ✅ safer than .single()
 
-  console.log("Supabase result:", { data, error }); // debug
+    console.log("Supabase response:", { data, error });
 
-  if (error || !data) {
-    document.getElementById("status").textContent = "Invalid login";
-  } else {
+    if (error) {
+      document.getElementById("status").textContent = "Error: " + error.message;
+      return;
+    }
+
+    if (!data) {
+      document.getElementById("status").textContent = "Invalid login (no match found)";
+      return;
+    }
+
+    // Success ✅
     localStorage.setItem("teamId", data.id);
+    document.getElementById("status").textContent = "Login successful! Redirecting...";
 
-    // Optional redirect param
     const params = new URLSearchParams(window.location.search);
     const redirect = params.get("redirect");
+    setTimeout(() => {
+      window.location.href = redirect || "question.html";
+    }, 1000);
 
-    if (redirect) {
-      window.location.href = redirect;
-    } else {
-      window.location.href = "question.html?id=1";
-    }
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    document.getElementById("status").textContent = "Unexpected error: " + err.message;
   }
 });

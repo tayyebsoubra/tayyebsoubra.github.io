@@ -21,7 +21,7 @@
       document.getElementById("status").textContent = "Uploading...";
 
       try {
-        const res = await fetch("https://YOUR-RENDER-APP.onrender.com/upload", {
+        const res = await fetch("https://rallypaperbackend.onrender.com", {
           method: "POST",
           body: formData,
         });

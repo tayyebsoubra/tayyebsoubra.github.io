@@ -2,88 +2,68 @@
 <html>
 <head>
   <title>Upload Video</title>
-  <style>
-    #progressContainer {
-      width: 100%;
-      max-width: 400px;
-      background: #eee;
-      border-radius: 10px;
-      overflow: hidden;
-      margin-top: 10px;
-      display: none;
-    }
-    #progressBar {
-      height: 20px;
-      width: 0%;
-      background: #4caf50;
-      text-align: center;
-      color: white;
-      font-size: 12px;
-    }
-    #spinner {
-      display: none;
-      margin-top: 10px;
-    }
-  </style>
 </head>
 <body>
   <h2>Upload Your Video</h2>
   <form id="uploadForm">
-    <input type="file" id="file" name="file" accept="video/*,image/*" required>
+    <input type="file" name="file" accept="video/*,image/*" required>
     <button type="submit">Upload</button>
   </form>
-  <div id="progressContainer">
-    <div id="progressBar">0%</div>
-  </div>
-  <div id="spinner">⏳ Uploading...</div>
   <p id="status"></p>
 
-  <script>
-    document.getElementById("uploadForm").addEventListener("submit", (e) => {
+  <script type="module">
+    import { supabase } from './supabaseClient.js'
+
+    const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
+
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const file = document.getElementById("file").files[0];
+
+      const file = e.target.file.files[0];
       if (!file) return;
 
-      const formData = new FormData();
-      formData.append("file", file);
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        document.getElementById("status").textContent = "File is too large (>25MB)";
+        return;
+      }
 
-      const xhr = new XMLHttpRequest();
+      const teamId = localStorage.getItem("teamId");
+      if (!teamId) {
+        document.getElementById("status").textContent = "You must log in first";
+        return;
+      }
 
-      // Show UI
-      document.getElementById("progressContainer").style.display = "block";
-      document.getElementById("spinner").style.display = "block";
-      document.getElementById("status").textContent = "";
+      const fileName = `${teamId}_${Date.now()}_${file.name}`; // unique name
+      document.getElementById("status").textContent = "Uploading...";
 
-      // Progress bar update
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          const bar = document.getElementById("progressBar");
-          bar.style.width = percent + "%";
-          bar.textContent = percent + "%";
-        }
-      };
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('videos')       // your bucket name
+        .upload(fileName, file);
 
-      // On success
-      xhr.onload = () => {
-        document.getElementById("spinner").style.display = "none";
-        if (xhr.status === 200) {
-          const data = JSON.parse(xhr.responseText);
-          document.getElementById("status").textContent =
-            "✅ Uploaded! Link: " + data.fileLink;
-        } else {
-          document.getElementById("status").textContent = "❌ Upload failed.";
-        }
-      };
+      if (uploadError) {
+        document.getElementById("status").textContent = "Upload failed: " + uploadError.message;
+        return;
+      }
 
-      // On error
-      xhr.onerror = () => {
-        document.getElementById("spinner").style.display = "none";
-        document.getElementById("status").textContent = "❌ Network error.";
-      };
+      // Get public URL
+      const { publicURL, error: urlError } = supabase.storage.from('videos').getPublicUrl(fileName);
+      if (urlError) {
+        document.getElementById("status").textContent = "Failed to get file URL: " + urlError.message;
+        return;
+      }
 
-      xhr.open("POST", "https://rallypaperbackend.onrender.com/upload", true);
-      xhr.send(formData);
+      // Save the URL to Supabase DB
+      const { error: dbError } = await supabase
+        .from('team_uploads')
+        .insert([{ team_id: teamId, file_url: publicURL }]);
+
+      if (dbError) {
+        document.getElementById("status").textContent = "Failed to save video info: " + dbError.message;
+      } else {
+        document.getElementById("status").textContent = "Upload successful! Link: " + publicURL;
+      }
     });
   </script>
 </body>

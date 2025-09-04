@@ -39,20 +39,27 @@
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')       // your bucket name
-        .upload(fileName, file);
+        .from('videos')
+        .upload(fileName, file, { upsert: true }); // allow overwriting
 
       if (uploadError) {
+        console.log(uploadError);
         document.getElementById("status").textContent = "Upload failed: " + uploadError.message;
         return;
       }
 
-      // Get public URL
-      const { publicURL, error: urlError } = supabase.storage.from('videos').getPublicUrl(fileName);
+      const { data: publicURLData, error: urlError } = supabase
+        .storage.from('videos')
+        .getPublicUrl(fileName);
+
       if (urlError) {
-        document.getElementById("status").textContent = "Failed to get file URL: " + urlError.message;
+        console.log(urlError);
+        document.getElementById("status").textContent = "Failed to get URL: " + urlError.message;
         return;
       }
+
+      document.getElementById("status").textContent = "Uploaded! Link: " + publicURLData.publicUrl;
+
 
       // Save the URL to Supabase DB
       const { error: dbError } = await supabase

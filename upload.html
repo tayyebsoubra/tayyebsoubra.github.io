@@ -2,36 +2,88 @@
 <html>
 <head>
   <title>Upload Video</title>
+  <style>
+    #progressContainer {
+      width: 100%;
+      max-width: 400px;
+      background: #eee;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 10px;
+      display: none;
+    }
+    #progressBar {
+      height: 20px;
+      width: 0%;
+      background: #4caf50;
+      text-align: center;
+      color: white;
+      font-size: 12px;
+    }
+    #spinner {
+      display: none;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
   <h2>Upload Your Video</h2>
   <form id="uploadForm">
-    <input type="file" name="file" accept="video/*,image/*" required>
+    <input type="file" id="file" name="file" accept="video/*,image/*" required>
     <button type="submit">Upload</button>
   </form>
+  <div id="progressContainer">
+    <div id="progressBar">0%</div>
+  </div>
+  <div id="spinner">⏳ Uploading...</div>
   <p id="status"></p>
 
   <script>
-    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+    document.getElementById("uploadForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      const file = e.target.file.files[0];
+      const file = document.getElementById("file").files[0];
+      if (!file) return;
+
       const formData = new FormData();
       formData.append("file", file);
 
-      document.getElementById("status").textContent = "Uploading...";
+      const xhr = new XMLHttpRequest();
 
-      try {
-        const res = await fetch("https://rallypaperbackend.onrender.com/upload", {
-            method: "POST",
-            body: formData,
-        });
+      // Show UI
+      document.getElementById("progressContainer").style.display = "block";
+      document.getElementById("spinner").style.display = "block";
+      document.getElementById("status").textContent = "";
 
-        const data = await res.json();
-        document.getElementById("status").textContent =
-          "Uploaded! Link: " + data.fileLink;
-      } catch (err) {
-        document.getElementById("status").textContent = "Upload failed.";
-      }
+      // Progress bar update
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          const bar = document.getElementById("progressBar");
+          bar.style.width = percent + "%";
+          bar.textContent = percent + "%";
+        }
+      };
+
+      // On success
+      xhr.onload = () => {
+        document.getElementById("spinner").style.display = "none";
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          document.getElementById("status").textContent =
+            "✅ Uploaded! Link: " + data.fileLink;
+        } else {
+          document.getElementById("status").textContent = "❌ Upload failed.";
+        }
+      };
+
+      // On error
+      xhr.onerror = () => {
+        document.getElementById("spinner").style.display = "none";
+        document.getElementById("status").textContent = "❌ Network error.";
+      };
+
+      xhr.open("POST", "https://rallypaperbackend.onrender.com/upload", true);
+      xhr.send(formData);
     });
   </script>
 </body>

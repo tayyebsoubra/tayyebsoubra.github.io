@@ -21,10 +21,11 @@
       document.getElementById("status").textContent = "Uploading...";
 
       try {
-        const res = await fetch("https://rallypaperbackend.onrender.com", {
-          method: "POST",
-          body: formData,
+        const res = await fetch("https://rallypaperbackend.onrender.com/upload", {
+            method: "POST",
+            body: formData,
         });
+
         const data = await res.json();
         document.getElementById("status").textContent =
           "Uploaded! Link: " + data.fileLink;

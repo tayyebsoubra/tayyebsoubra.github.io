@@ -12,7 +12,7 @@
   <p id="status"></p>
 
   <script type="module">
-    import { supabase } from './js/supabaseClient.js'
+    import { supabase } from './js/supabaseClient.js';
 
     const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -20,7 +20,10 @@
       e.preventDefault();
 
       const file = e.target.file.files[0];
-      if (!file) return;
+      if (!file) {
+        document.getElementById("status").textContent = "No file selected.";
+        return;
+      }
 
       // Check file size
       if (file.size > MAX_FILE_SIZE) {
@@ -43,23 +46,24 @@
         .upload(fileName, file, { upsert: true }); // allow overwriting
 
       if (uploadError) {
-        console.log(uploadError);
+        console.error("Upload error:", uploadError);
         document.getElementById("status").textContent = "Upload failed: " + uploadError.message;
         return;
       }
 
+      // Get the public URL
       const { data: publicURLData, error: urlError } = supabase
         .storage.from('videos')
         .getPublicUrl(fileName);
 
       if (urlError) {
-        console.log(urlError);
+        console.error("URL error:", urlError);
         document.getElementById("status").textContent = "Failed to get URL: " + urlError.message;
         return;
       }
 
-      document.getElementById("status").textContent = "Uploaded! Link: " + publicURLData.publicUrl;
-
+      const publicURL = publicURLData.publicUrl;
+      document.getElementById("status").textContent = "Uploaded! Link: " + publicURL;
 
       // Save the URL to Supabase DB
       const { error: dbError } = await supabase
@@ -67,6 +71,7 @@
         .insert([{ team_id: teamId, file_url: publicURL }]);
 
       if (dbError) {
+        console.error("DB error:", dbError);
         document.getElementById("status").textContent = "Failed to save video info: " + dbError.message;
       } else {
         document.getElementById("status").textContent = "Upload successful! Link: " + publicURL;

@@ -1,48 +1,65 @@
 import { supabase } from './supabaseClient.js';
 
-const COOLDOWN_SECONDS = 300; // 5 min
+async function recordAttempt(teamId, questionId) {
+  const { data, error } = await supabase
+    .from("team_attempts")
+    .upsert(
+      {
+        team_id: teamId,
+        question_id: questionId,
+        last_attempt: new Date().toISOString(),
+      },
+      { onConflict: ["team_id", "question_id"] }
+    );
+
+  if (error) {
+    console.error("Error saving attempt:", error);
+  } else {
+    console.log("Attempt saved:", data);
+  }
+}
 
 async function loadQuestion() {
   const teamId = localStorage.getItem("teamId");
   if (!teamId) {
+    // Save redirect link if not logged in
     const currentUrl = window.location.href;
     window.location.href = `index.html?redirect=${encodeURIComponent(currentUrl)}`;
     return;
   }
 
-  // Get question id from URL
   const params = new URLSearchParams(window.location.search);
   const qid = params.get("id");
   if (!qid) {
-    document.getElementById("status").textContent = "No question specified.";
+    document.getElementById("status").textContent = "No question id provided.";
     return;
   }
-  const qidInt = parseInt(qid, 10);
+  const questionId = parseInt(qid, 10);
 
-  // Check cooldown for THIS question
-  const { data: attempt } = await supabase
+  // 🔹 Check cooldown for this (team, question)
+  const { data: attempt, error: attemptErr } = await supabase
     .from("team_attempts")
     .select("last_attempt")
     .eq("team_id", teamId)
-    .eq("question_id", qidInt)
-    .single();
+    .eq("question_id", questionId)
+    .maybeSingle();
 
-  if (attempt?.last_attempt) {
+  if (attempt && attempt.last_attempt) {
     const last = new Date(attempt.last_attempt);
     const now = new Date();
     const diff = (now - last) / 1000;
-    if (diff < COOLDOWN_SECONDS) {
+    if (diff < 300) {
       document.getElementById("status").textContent =
-        `Cooldown active for this question, wait ${COOLDOWN_SECONDS - Math.floor(diff)}s`;
+        "Cooldown active, wait " + (300 - Math.floor(diff)) + "s";
       return;
     }
   }
 
-  // Load the question
+  // 🔹 Load the question
   const { data: question, error } = await supabase
     .from("questions")
     .select("*")
-    .eq("id", qidInt)
+    .eq("id", questionId)
     .single();
 
   if (error || !question) {
@@ -51,7 +68,7 @@ async function loadQuestion() {
     return;
   }
 
-  // Collect all options
+  // Collect and shuffle options
   const options = [];
   for (let i = 1; i <= 12; i++) {
     const opt = question[`option_${i}`];
@@ -64,21 +81,17 @@ async function loadQuestion() {
     `<h2>${question.question}</h2>` +
     options.map((opt) => `<button class='option'>${opt}</button>`).join("");
 
+  // 🔹 Handle answer clicks
   document.querySelectorAll(".option").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (btn.textContent === question.correct_option) {
+        // Correct → go to upload
         window.location.href = "upload.html";
       } else {
-        // Save cooldown for THIS team & THIS question
-        const now = new Date().toISOString();
-        await supabase
-          .from("team_attempts")
-          .upsert([
-            { team_id: teamId, question_id: qidInt, last_attempt: now }
-          ], { onConflict: ["team_id", "question_id"] });
-
+        // Wrong → record attempt for cooldown
+        await recordAttempt(teamId, questionId);
         document.getElementById("status").textContent =
-          "Wrong answer. 5 min cooldown for this question.";
+          "Wrong answer. 5 min cooldown.";
         document.querySelectorAll(".option").forEach((b) => (b.disabled = true));
       }
     });

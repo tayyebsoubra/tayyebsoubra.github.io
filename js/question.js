@@ -2,41 +2,37 @@ import { supabase } from './supabaseClient.js';
 
 async function recordAttempt(teamId, questionId) {
   const { data, error } = await supabase
-    .from("team_attempts")
-    .upsert(
-      {
-        team_id: teamId,
-        question_id: questionId,
-        last_attempt: new Date().toISOString(),
-      },
-      { onConflict: ["team_id", "question_id"] }
-    );
+    .from("team_questions")
+    .update({
+      attempted: true,
+      last_attempt: new Date().toISOString()
+    })
+    .eq("team_id", teamId)
+    .eq("question_id", questionId);
 
   if (error) {
     console.error("Error saving attempt:", error);
   } else {
-    console.log("Attempt saved:", data);
+    console.log("Attempt recorded:", data);
   }
 }
 
 async function loadQuestion() {
   const teamId = localStorage.getItem("teamId");
   if (!teamId) {
-    // Save redirect link if not logged in
     const currentUrl = window.location.href;
     window.location.href = `index.html?redirect=${encodeURIComponent(currentUrl)}`;
     return;
   }
 
-  // ✅ Use secure UUID instead of numeric id
   const params = new URLSearchParams(window.location.search);
-  const quuid = params.get("q"); // e.g. ?q=3d2c3a2b-...
+  const quuid = params.get("q");
   if (!quuid) {
     document.getElementById("status").textContent = "No question provided.";
     return;
   }
 
-  // 🔹 Load the question by UUID
+  // Load question by UUID
   const { data: question, error } = await supabase
     .from("questions")
     .select("*")
@@ -49,18 +45,24 @@ async function loadQuestion() {
     return;
   }
 
-  const questionId = question.id; // numeric ID for team_attempts
+  const questionId = question.id;
 
-  // 🔹 Check cooldown for this (team, question)
-  const { data: attempt, error: attemptErr } = await supabase
-    .from("team_attempts")
-    .select("last_attempt")
+  // ✅ Check if team is assigned this question
+  const { data: teamQ, error: tqError } = await supabase
+    .from("team_questions")
+    .select("*")
     .eq("team_id", teamId)
     .eq("question_id", questionId)
-    .maybeSingle();
+    .single();
 
-  if (attempt && attempt.last_attempt) {
-    const last = new Date(attempt.last_attempt);
+  if (tqError || !teamQ) {
+    document.getElementById("status").textContent = "You are not allowed to attempt this question.";
+    return;
+  }
+
+  // ✅ Check cooldown
+  if (teamQ.last_attempt) {
+    const last = new Date(teamQ.last_attempt);
     const now = new Date();
     const diff = (now - last) / 1000;
     if (diff < 300) {
@@ -70,7 +72,7 @@ async function loadQuestion() {
     }
   }
 
-  // Collect and shuffle options
+  // Shuffle options
   const options = [];
   for (let i = 1; i <= 12; i++) {
     const opt = question[`option_${i}`];
@@ -83,14 +85,11 @@ async function loadQuestion() {
     `<h2>${question.question}</h2>` +
     options.map((opt) => `<button class='option'>${opt}</button>`).join("");
 
-  // 🔹 Handle answer clicks
   document.querySelectorAll(".option").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (btn.textContent === question.correct_option) {
-        // Correct → go to upload
         window.location.href = "upload.html";
       } else {
-        // Wrong → record attempt for cooldown
         await recordAttempt(teamId, questionId);
         document.getElementById("status").textContent =
           "Wrong answer. 5 min cooldown.";

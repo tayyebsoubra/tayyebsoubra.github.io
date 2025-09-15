@@ -28,13 +28,28 @@ async function loadQuestion() {
     return;
   }
 
+  // ✅ Use secure UUID instead of numeric id
   const params = new URLSearchParams(window.location.search);
-  const qid = params.get("id");
-  if (!qid) {
-    document.getElementById("status").textContent = "No question id provided.";
+  const quuid = params.get("q"); // e.g. ?q=3d2c3a2b-...
+  if (!quuid) {
+    document.getElementById("status").textContent = "No question provided.";
     return;
   }
-  const questionId = parseInt(qid, 10);
+
+  // 🔹 Load the question by UUID
+  const { data: question, error } = await supabase
+    .from("questions")
+    .select("*")
+    .eq("uuid", quuid)
+    .single();
+
+  if (error || !question) {
+    console.error("Error loading question:", error);
+    document.getElementById("status").textContent = "Question not found.";
+    return;
+  }
+
+  const questionId = question.id; // numeric ID for team_attempts
 
   // 🔹 Check cooldown for this (team, question)
   const { data: attempt, error: attemptErr } = await supabase
@@ -53,19 +68,6 @@ async function loadQuestion() {
         "Cooldown active, wait " + (300 - Math.floor(diff)) + "s";
       return;
     }
-  }
-
-  // 🔹 Load the question
-  const { data: question, error } = await supabase
-    .from("questions")
-    .select("*")
-    .eq("id", questionId)
-    .single();
-
-  if (error || !question) {
-    console.error("Error loading question:", error);
-    document.getElementById("status").textContent = "Question not found.";
-    return;
   }
 
   // Collect and shuffle options

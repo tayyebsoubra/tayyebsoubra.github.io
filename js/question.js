@@ -1,93 +1,88 @@
 import { supabase } from './supabaseClient.js';
 
+const COOLDOWN_SECONDS = 300; // 5 min
+
 async function loadQuestion() {
   const teamId = localStorage.getItem("teamId");
   if (!teamId) {
-    // Save redirect link if not logged in
     const currentUrl = window.location.href;
     window.location.href = `index.html?redirect=${encodeURIComponent(currentUrl)}`;
     return;
   }
 
-  // Check cooldown
-  const { data: team } = await supabase.from("teams").select("*").eq("id", teamId).single();
-  if (team.last_attempt) {
-    const last = new Date(team.last_attempt);
-    const now = new Date();
-    const diff = (now - last) / 1000;
-    if (diff < 300) {
-      document.getElementById("status").textContent =
-        "Cooldown active, wait " + (300 - Math.floor(diff)) + "s";
-      return;
-    }
-  }
-
-  // Get question id from URL (for QR links)
+  // Get question id from URL
   const params = new URLSearchParams(window.location.search);
   const qid = params.get("id");
+  if (!qid) {
+    document.getElementById("status").textContent = "No question specified.";
+    return;
+  }
+  const qidInt = parseInt(qid, 10);
 
-  let data = null;
-  if (qid) {
-    // Convert to integer before querying
-    const qidInt = parseInt(qid, 10);
-    const { data: question, error } = await supabase
-      .from("questions")
-      .select("*")
-      .eq("id", qidInt)
-      .single();
-    if (error) {
-      console.error("Error loading question:", error);
-      document.getElementById("status").textContent = "Question not found.";
+  // Check cooldown for THIS question
+  const { data: attempt } = await supabase
+    .from("team_attempts")
+    .select("last_attempt")
+    .eq("team_id", teamId)
+    .eq("question_id", qidInt)
+    .single();
+
+  if (attempt?.last_attempt) {
+    const last = new Date(attempt.last_attempt);
+    const now = new Date();
+    const diff = (now - last) / 1000;
+    if (diff < COOLDOWN_SECONDS) {
+      document.getElementById("status").textContent =
+        `Cooldown active for this question, wait ${COOLDOWN_SECONDS - Math.floor(diff)}s`;
       return;
     }
-    data = question;
-  } else {
-    // Default: load the first question
-    const { data: question, error } = await supabase
-      .from("questions")
-      .select("*")
-      .order("id", { ascending: true })
-      .limit(1)
-      .single();
-    if (error) {
-      console.error("Error loading question:", error);
-      document.getElementById("status").textContent = "No questions available.";
-      return;
-    }
-    data = question;
   }
 
-  if (data) {
-    // Collect all available options (up to 12)
-    const options = [];
-    for (let i = 1; i <= 12; i++) {
-      const opt = data[`option_${i}`];
-      if (opt) options.push(opt);
-    }
+  // Load the question
+  const { data: question, error } = await supabase
+    .from("questions")
+    .select("*")
+    .eq("id", qidInt)
+    .single();
 
-    // Shuffle options
-    options.sort(() => Math.random() - 0.5);
+  if (error || !question) {
+    console.error("Error loading question:", error);
+    document.getElementById("status").textContent = "Question not found.";
+    return;
+  }
 
-    const box = document.getElementById("questionBox");
-    box.innerHTML =
-      `<h2>${data.question}</h2>` +
-      options.map((opt) => `<button class='option'>${opt}</button>`).join("");
+  // Collect all options
+  const options = [];
+  for (let i = 1; i <= 12; i++) {
+    const opt = question[`option_${i}`];
+    if (opt) options.push(opt);
+  }
+  options.sort(() => Math.random() - 0.5);
 
-    document.querySelectorAll(".option").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        if (btn.textContent === data.correct_option) {
-          window.location.href = "upload.html";
-        } else {
-          await supabase
-            .from("teams")
-            .update({ last_attempt: new Date().toISOString() })
-            .eq("id", teamId);
-          document.getElementById("status").textContent =
-            "Wrong answer. 5 min cooldown.";
-          document.querySelectorAll(".option").forEach((b) => (b.disabled = true)); // disable all buttons
-        }
-      });
+  const box = document.getElementById("questionBox");
+  box.innerHTML =
+    `<h2>${question.question}</h2>` +
+    options.map((opt) => `<button class='option'>${opt}</button>`).join("");
+
+  document.querySelectorAll(".option").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (btn.textContent === question.correct_option) {
+        window.location.href = "upload.html";
+      } else {
+        // Save cooldown for THIS team & THIS question
+        const now = new Date().toISOString();
+        await supabase
+          .from("team_attempts")
+          .upsert([
+            { team_id: teamId, question_id: qidInt, last_attempt: now }
+          ], { onConflict: ["team_id", "question_id"] });
+
+        document.getElementById("status").textContent =
+          "Wrong answer. 5 min cooldown for this question.";
+        document.querySelectorAll(".option").forEach((b) => (b.disabled = true));
+      }
     });
-  }
+  });
 }
+
 loadQuestion();
